@@ -1,0 +1,79 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger: none
+- master
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+      
+    pool:
+        name: tslvstsvmss
+
+    variables:
+        solution: '**/*.sln'
+        buildPlatform: 'Any CPU'
+        buildConfiguration: 'Release'
+
+    steps:
+
+      - task: NuGetToolInstaller@1
+
+      - task: NuGetCommand@2
+        inputs:
+          command: 'restore'
+          restoreSolution: '$(solution)'
+          feedsToUse: 'select'
+          vstsFeed: '0a67a34c-bb4e-4771-8f77-cf242bf3ea11/13f627d6-e8a2-45b3-b807-eb8ae29bc6d0'
+
+      - task: SonarQubePrepare@4
+        inputs:
+          SonarQube: 'SonarQube'
+          scannerMode: 'MSBuild'
+          projectKey: 'GTIO.GIMS'
+          projectName: 'GTIO.GIMS'
+          extraProperties: |
+            # Additional properties that will be passed to the scanner, 
+            sonar.source=$(Build.SourcesDirectory)
+            sonar.skipPackageDesign=true
+            
+      - task: VSBuild@1
+        inputs:
+          solution: '$(solution)'
+          vsVersion: '16.0'
+          msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true /p:DesktopBuildPackageLocation="$(build.artifactstagingdirectory)\WebApp.zip"'
+          platform: '$(buildPlatform)'
+          configuration: '$(buildConfiguration)'
+          clean: true
+
+      - task: SonarQubeAnalyze@4
+
+      - task: SonarQubePublish@4
+        inputs:
+          pollingTimeoutSec: '300'
+
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          ArtifactName: 'drop'
+          publishLocation: 'Container'
+
+- stage: Deploy
+  jobs:
+  - job: Deploy
+
+    pool:
+        name: tslvstsvmss
+
+    steps:
+
+      - task: AzureRmWebAppDeployment@4
+        inputs:
+          ConnectionType: 'AzureRM'
+          appType: 'webApp'
+          WebAppName: 'test'
+          packageForLinux: '$(System.DefaultWorkingDirectory)/**/*.zip'
